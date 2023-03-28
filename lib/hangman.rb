@@ -1,12 +1,23 @@
 # frozen_string_literal: true
 
+require 'yaml'
+
 # Game Class
 class Game
   def initialize
     @secret_word = select_word
     @current_guess = guess_init
     @incorrect_letters = []
-    @turns_left = 12
+    @turns_left = @secret_word.length + 1
+  end
+
+  def to_yaml
+    YAML.dump({
+                secret_word: @secret_word,
+                current_guess: @current_guess,
+                incorrect_letters: @incorrect_letters,
+                turns_left: @turns_left
+              })
   end
 
   def select_word
@@ -27,15 +38,15 @@ class Game
   end
 
   def play
-    puts @secret_word.join
-    loop do
-      print_board
+    catch(:end_game) do
+      loop do
+        print_board
 
-      print "\nGuess A Letter: "
-      make_guess(gets.chomp.upcase)
+        user_input
 
-      return if word_guessed?
-      return if out_of_guesses?
+        throw :end_game if word_guessed?
+        throw :end_game if out_of_guesses?
+      end
     end
   end
 
@@ -43,6 +54,27 @@ class Game
     puts "\n#{@current_guess.join(' ')}"
     puts "\nIncorrect Letters: #{@incorrect_letters.join(' ')}"
     puts "\nTurns Left: #{@turns_left}"
+  end
+
+  def user_input
+    print "\nGuess A Letter (Or Input 'save' To Save Your Game): "
+    input = gets.chomp
+    if input == 'save'
+      save_game
+    else
+      make_guess(input.upcase)
+    end
+  end
+
+  def save_game
+    Dir.mkdir('saved_games') unless Dir.exist?('saved_games')
+
+    filename = 'saved_games/game.yaml'
+
+    File.open(filename, 'w') { |file| file.write(to_yaml) }
+
+    puts "\nGame Saved! See You Next Time."
+    throw :end_game
   end
 
   def make_guess(guess)
@@ -78,4 +110,31 @@ class Game
   end
 end
 
-Game.new.play
+# rubocop:disable Lint/MissingSuper
+
+# SavedGame Class
+class SavedGame < Game
+  def initialize(secret_word, current_guess, incorrect_letters, turns_left)
+    @secret_word = secret_word
+    @current_guess = current_guess
+    @incorrect_letters = incorrect_letters
+    @turns_left = turns_left
+  end
+
+  def self.from_yaml(save_file)
+    data = YAML.load save_file
+    self.new(data[:secret_word], data[:current_guess], data[:incorrect_letters], data[:turns_left])
+  end
+end
+
+# rubocop:enable Lint/MissingSuper
+
+print 'Welcome To Hangman! Would You Like To Open A Saved Game? (y/n): '
+input = gets.chomp
+
+case input
+when 'y'
+  SavedGame.from_yaml(File.read('saved_games/game.yaml')).play
+when 'n'
+  Game.new.play
+end
